@@ -63,7 +63,7 @@ uint8_t first_wave_flag_2 = 0;
 uint8_t first_wave_flag_3 = 0;
 
 // Button state
-uint8_t button_device_select_state = 0;
+uint8_t button_device_select_state = 1;
 
 /* USER CODE END PV */
 
@@ -295,7 +295,7 @@ static void MX_TIM2_Init(void)
 	sSlaveConfig.SlaveMode = TIM_SLAVEMODE_TRIGGER;
 	sSlaveConfig.InputTrigger = TIM_TS_TI1FP1;
 	sSlaveConfig.TriggerPolarity = TIM_TRIGGERPOLARITY_FALLING;
-	sSlaveConfig.TriggerFilter = 0;
+	sSlaveConfig.TriggerFilter = 4;
 	if (HAL_TIM_SlaveConfigSynchro(&htim2, &sSlaveConfig) != HAL_OK)
 	{
 		Error_Handler();
@@ -786,8 +786,8 @@ void HAL_TIM_IC_CaptureCallback(TIM_HandleTypeDef *htim) {
 }
 
 void set_alpha(int alpha) {
-	if (button_device_select_state = 1){
-		__HAL_TIM_SET_COMPARE(&htim2, TIM_CHANNEL_2, (alpha + PI_ANGLE_TIM));
+	if (button_device_select_state == 1){
+		__HAL_TIM_SET_COMPARE(&htim2, TIM_CHANNEL_2, (alpha + 10000));
 		__HAL_TIM_SET_COMPARE(&htim2, TIM_CHANNEL_3, (alpha));
 		__HAL_TIM_SET_AUTORELOAD(&htim2, (alpha+10000+SCR_PULSE_WIDTH));
 
@@ -808,11 +808,14 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
 {
 	if(GPIO_Pin == DEVICE_SEL_Pin && button_device_select_state == 1) // If The INT Source Is EXTI Line9 (A9 Pin)
 	{
+		HAL_TIM_OC_Stop_IT(&htim2, TIM_CHANNEL_3);
+
+
 		HAL_TIM_Base_Start_IT(&htim10);
 		button_device_select_state = 0;
 	}
 	else {
-		__NOP();
+
 	}
 }
 
@@ -826,6 +829,8 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 		if(HAL_GPIO_ReadPin(DEVICE_SEL_GPIO_Port, DEVICE_SEL_Pin) == GPIO_PIN_RESET){
 			button_device_select_state = 1;
 			HAL_TIM_Base_Stop_IT(&htim10);
+
+			HAL_TIM_OC_Start_IT(&htim2, TIM_CHANNEL_3);
 		}
 	}
 }
