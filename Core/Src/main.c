@@ -52,18 +52,17 @@ TIM_HandleTypeDef htim10;
 #define SCR_PULSE_WIDTH 1000
 
 // Global alpha phase setting
-int16_t sudut_alpha = 1000;
+int16_t sudut_alpha = 2;
 uint32_t counter_encoder = 0;
 int16_t counter_last_val = 0;
-uint8_t mode_select = MODE_UNIDIRECTIONAL;
-uint8_t device_select = DEVICE_SCR;
 
 uint8_t first_wave_flag_1 = 0;
 uint8_t first_wave_flag_2 = 0;
 uint8_t first_wave_flag_3 = 0;
 
 // Button state
-uint8_t button_device_select_state = 1;
+uint8_t button_device_select_state = DEVICE_SCR;
+uint8_t button_mode_select_state = MODE_UNIDIRECTIONAL;
 
 /* USER CODE END PV */
 
@@ -117,10 +116,12 @@ int main(void)
 	MX_TIM3_Init();
 	MX_TIM4_Init();
 	MX_TIM5_Init();
-	MX_USB_DEVICE_Init();
-	MX_ADC1_Init();
+	// MX_USB_DEVICE_Init();
+	// MX_ADC1_Init();
 	MX_TIM10_Init();
 	/* USER CODE BEGIN 2 */
+
+	__HAL_TIM_CLEAR_IT(&htim2 ,TIM_IT_UPDATE);
 	// Initializing Timer Base
 	HAL_TIM_Base_Start_IT(&htim2);
 	HAL_TIM_Base_Start_IT(&htim3);
@@ -139,14 +140,16 @@ int main(void)
 
 	// Initializing Encoder
 	HAL_TIM_Encoder_Start_IT(&htim5, TIM_CHANNEL_ALL);
+
+	// Init sudut_alpha to remove unwanted timer compare error
+	// Basede on trial and error, we found out that 2 uS is enough
+	set_alpha(sudut_alpha);
 	/* USER CODE END 2 */
 
 	/* Infinite loop */
 	/* USER CODE BEGIN WHILE */
 	while (1) {
-		set_alpha(sudut_alpha);
-		HAL_Delay(100);
-		HAL_GPIO_TogglePin(LED_PIN_GPIO_Port, LED_PIN_Pin);
+
 	}
 	/* USER CODE END WHILE */
 
@@ -294,8 +297,8 @@ static void MX_TIM2_Init(void)
 	}
 	sSlaveConfig.SlaveMode = TIM_SLAVEMODE_TRIGGER;
 	sSlaveConfig.InputTrigger = TIM_TS_TI1FP1;
-	sSlaveConfig.TriggerPolarity = TIM_TRIGGERPOLARITY_FALLING;
-	sSlaveConfig.TriggerFilter = 4;
+	sSlaveConfig.TriggerPolarity = TIM_TRIGGERPOLARITY_BOTHEDGE;
+	sSlaveConfig.TriggerFilter = 12;
 	if (HAL_TIM_SlaveConfigSynchro(&htim2, &sSlaveConfig) != HAL_OK)
 	{
 		Error_Handler();
@@ -325,7 +328,7 @@ static void MX_TIM2_Init(void)
 	sConfigOP.OCPolarity = TIM_OCPOLARITY_HIGH;
 
 	sConfigOP.ICSelection = TIM_ICSELECTION_DIRECTTI;
-	sConfigOP.ICPolarity = TIM_ICPOLARITY_RISING;
+	sConfigOP.ICPolarity = TIM_ICPOLARITY_FALLING;
 	sConfigOP.ICFilter = 0;
 	if (HAL_TIM_OnePulse_ConfigChannel(&htim2, &sConfigOP, TIM_CHANNEL_2,
 			TIM_CHANNEL_1) != HAL_OK) {
@@ -379,7 +382,7 @@ static void MX_TIM3_Init(void)
 	}
 	sSlaveConfig.SlaveMode = TIM_SLAVEMODE_TRIGGER;
 	sSlaveConfig.InputTrigger = TIM_TS_TI1FP1;
-	sSlaveConfig.TriggerPolarity = TIM_TRIGGERPOLARITY_RISING;
+	sSlaveConfig.TriggerPolarity = TIM_TRIGGERPOLARITY_BOTHEDGE;
 	sSlaveConfig.TriggerFilter = 0;
 	if (HAL_TIM_SlaveConfigSynchro(&htim3, &sSlaveConfig) != HAL_OK)
 	{
@@ -410,7 +413,7 @@ static void MX_TIM3_Init(void)
 	sConfigOP.OCPolarity = TIM_OCPOLARITY_HIGH;
 
 	sConfigOP.ICSelection = TIM_ICSELECTION_DIRECTTI;
-	sConfigOP.ICPolarity = TIM_ICPOLARITY_RISING;
+	sConfigOP.ICPolarity = TIM_ICPOLARITY_FALLING;
 	sConfigOP.ICFilter = 0;
 	if (HAL_TIM_OnePulse_ConfigChannel(&htim3, &sConfigOP, TIM_CHANNEL_2,
 			TIM_CHANNEL_1) != HAL_OK) {
@@ -464,7 +467,7 @@ static void MX_TIM4_Init(void)
 	}
 	sSlaveConfig.SlaveMode = TIM_SLAVEMODE_TRIGGER;
 	sSlaveConfig.InputTrigger = TIM_TS_TI1FP1;
-	sSlaveConfig.TriggerPolarity = TIM_TRIGGERPOLARITY_RISING;
+	sSlaveConfig.TriggerPolarity = TIM_TRIGGERPOLARITY_BOTHEDGE;
 	sSlaveConfig.TriggerFilter = 0;
 	if (HAL_TIM_SlaveConfigSynchro(&htim4, &sSlaveConfig) != HAL_OK)
 	{
@@ -626,84 +629,22 @@ static void MX_GPIO_Init(void)
 /* USER CODE BEGIN 4 */
 
 // TRIAC Mode Init
-static void MX_TIM2_TRIAC_Init(void)
-{
-
-	/* USER CODE BEGIN TIM2_Init 0 */
-	TIM_OnePulse_InitTypeDef sConfigOP = { 0 };
-	/* USER CODE END TIM2_Init 0 */
-
-	TIM_SlaveConfigTypeDef sSlaveConfig = {0};
-	TIM_MasterConfigTypeDef sMasterConfig = {0};
-	TIM_OC_InitTypeDef sConfigOC = {0};
-
-	/* USER CODE BEGIN TIM2_Init 1 */
-
-	/* USER CODE END TIM2_Init 1 */
-	htim2.Instance = TIM2;
-	htim2.Init.Prescaler = 60-1;
-	htim2.Init.CounterMode = TIM_COUNTERMODE_UP;
-	htim2.Init.Period = 20000-1;
-	htim2.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
-	htim2.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_ENABLE;
-	if (HAL_TIM_Base_Init(&htim2) != HAL_OK)
-	{
-		Error_Handler();
-	}
-	if (HAL_TIM_PWM_Init(&htim2) != HAL_OK)
-	{
-		Error_Handler();
-	}
-	if (HAL_TIM_OC_Init(&htim2) != HAL_OK)
-	{
-		Error_Handler();
-	}
-	if (HAL_TIM_OnePulse_Init(&htim2, TIM_OPMODE_SINGLE) != HAL_OK)
-	{
-		Error_Handler();
-	}
-	sSlaveConfig.SlaveMode = TIM_SLAVEMODE_TRIGGER;
-	sSlaveConfig.InputTrigger = TIM_TS_TI1FP1;
-	sSlaveConfig.TriggerPolarity = TIM_TRIGGERPOLARITY_BOTHEDGE;
-	sSlaveConfig.TriggerFilter = 0;
-	if (HAL_TIM_SlaveConfigSynchro(&htim2, &sSlaveConfig) != HAL_OK)
-	{
-		Error_Handler();
-	}
-	sMasterConfig.MasterOutputTrigger = TIM_TRGO_RESET;
-	sMasterConfig.MasterSlaveMode = TIM_MASTERSLAVEMODE_DISABLE;
-	if (HAL_TIMEx_MasterConfigSynchronization(&htim2, &sMasterConfig) != HAL_OK)
-	{
-		Error_Handler();
-	}
-	sConfigOC.OCMode = TIM_OCMODE_PWM1;
-	sConfigOC.Pulse = 0;
-	sConfigOC.OCPolarity = TIM_OCPOLARITY_HIGH;
-	sConfigOC.OCFastMode = TIM_OCFAST_DISABLE;
-	sConfigOC.OCMode = TIM_OCMODE_TOGGLE;
-	if (HAL_TIM_OC_ConfigChannel(&htim2, &sConfigOC, TIM_CHANNEL_2) != HAL_OK)
-	{
-		Error_Handler();
-	}
-	/* USER CODE BEGIN TIM2_Init 2 */
-
-	/* USER CODE END TIM2_Init 2 */
-	HAL_TIM_MspPostInit(&htim2);
-
-}
-
-
 void HAL_TIM_OC_DelayElapsedCallback(TIM_HandleTypeDef *htim) {
 	// Zero cross detector Handler
 	if (htim->Instance == TIM2) {
 		if (htim->Channel == HAL_TIM_ACTIVE_CHANNEL_3) {
-			if (first_wave_flag_1 != 0) {
-				__HAL_TIM_SET_COMPARE(&htim2, TIM_CHANNEL_3, sudut_alpha);
-				first_wave_flag_1 = 0;
-			} else {
-				__HAL_TIM_SET_COMPARE(&htim2, TIM_CHANNEL_3,
-						(sudut_alpha+SCR_PULSE_WIDTH));
-				first_wave_flag_1 = 1;
+			if (button_device_select_state != 1){
+				TIM2->CCMR2 = (TIM2->CCMR2 & ~TIM_CCMR2_OC3M) | (5<< TIM_CCMR2_OC3M_Pos);
+				if (first_wave_flag_1 != 0) {
+					__HAL_TIM_SET_COMPARE(&htim2, TIM_CHANNEL_3, sudut_alpha);
+					TIM2->CCMR2 = (TIM2->CCMR2 & ~TIM_CCMR2_OC3M) | (4 << TIM_CCMR2_OC3M_Pos);
+					first_wave_flag_1 = 0;
+				} else {
+					__HAL_TIM_SET_COMPARE(&htim2, TIM_CHANNEL_3,
+							(sudut_alpha+SCR_PULSE_WIDTH));
+					TIM2->CCMR2 = (TIM2->CCMR2 & ~TIM_CCMR2_OC3M) | (5 << TIM_CCMR2_OC3M_Pos);
+					first_wave_flag_1 = 1;
+				}
 			}
 		}
 	}
@@ -711,13 +652,18 @@ void HAL_TIM_OC_DelayElapsedCallback(TIM_HandleTypeDef *htim) {
 	// Phase B
 	if (htim->Instance == TIM3) {
 		if (htim->Channel == HAL_TIM_ACTIVE_CHANNEL_3) {
-			if (first_wave_flag_2 != 0) {
-				__HAL_TIM_SET_COMPARE(&htim3, TIM_CHANNEL_3, sudut_alpha);
-				first_wave_flag_2 = 0;
-			} else {
-				__HAL_TIM_SET_COMPARE(&htim3, TIM_CHANNEL_3,
-						(sudut_alpha+SCR_PULSE_WIDTH));
-				first_wave_flag_2 = 1;
+			if (button_device_select_state != 1){
+				TIM3->CCMR2 = (TIM3->CCMR2 & ~TIM_CCMR2_OC3M) | (5<< TIM_CCMR2_OC3M_Pos);
+				if (first_wave_flag_2 != 0) {
+					__HAL_TIM_SET_COMPARE(&htim3, TIM_CHANNEL_3, sudut_alpha);
+					TIM3->CCMR2 = (TIM3->CCMR2 & ~TIM_CCMR2_OC3M) | (4 << TIM_CCMR2_OC3M_Pos);
+					first_wave_flag_2 = 0;
+				} else {
+					__HAL_TIM_SET_COMPARE(&htim3, TIM_CHANNEL_3,
+							(sudut_alpha+SCR_PULSE_WIDTH));
+					TIM2->CCMR2 = (TIM2->CCMR2 & ~TIM_CCMR2_OC3M) | (5 << TIM_CCMR2_OC3M_Pos);
+					first_wave_flag_2 = 1;
+				}
 			}
 		}
 	}
@@ -725,13 +671,18 @@ void HAL_TIM_OC_DelayElapsedCallback(TIM_HandleTypeDef *htim) {
 	// Phase C
 	if (htim->Instance == TIM4) {
 		if (htim->Channel == HAL_TIM_ACTIVE_CHANNEL_3) {
-			if (first_wave_flag_3 != 0) {
-				__HAL_TIM_SET_COMPARE(&htim4, TIM_CHANNEL_3, sudut_alpha);
-				first_wave_flag_3 = 0;
-			} else {
-				__HAL_TIM_SET_COMPARE(&htim4, TIM_CHANNEL_3,
-						(sudut_alpha+SCR_PULSE_WIDTH));
-				first_wave_flag_3 = 1;
+			if (button_device_select_state != 1){
+				TIM4->CCMR2 = (TIM4->CCMR2 & ~TIM_CCMR2_OC3M) | (5<< TIM_CCMR2_OC3M_Pos);
+				if (first_wave_flag_3 != 0) {
+					__HAL_TIM_SET_COMPARE(&htim4, TIM_CHANNEL_3, sudut_alpha);
+					TIM4->CCMR2 = (TIM4->CCMR2 & ~TIM_CCMR2_OC3M) | (4 << TIM_CCMR2_OC3M_Pos);
+					first_wave_flag_3 = 0;
+				} else {
+					__HAL_TIM_SET_COMPARE(&htim4	, TIM_CHANNEL_3,
+							(sudut_alpha+SCR_PULSE_WIDTH));
+					TIM4->CCMR2 = (TIM4->CCMR2 & ~TIM_CCMR2_OC3M) | (5 << TIM_CCMR2_OC3M_Pos);
+					first_wave_flag_3 = 1;
+				}
 			}
 		}
 	}
@@ -740,7 +691,6 @@ void HAL_TIM_OC_DelayElapsedCallback(TIM_HandleTypeDef *htim) {
 void HAL_TIM_IC_CaptureCallback(TIM_HandleTypeDef *htim) {
 	if (htim->Instance == TIM5) {
 		uint16_t current_cnt;
-		HAL_GPIO_TogglePin(LED_PIN_GPIO_Port, LED_PIN_Pin);
 		current_cnt = __HAL_TIM_GET_COUNTER(&htim5);
 		uint16_t diff = (uint16_t)(current_cnt - counter_last_val);
 
@@ -769,6 +719,9 @@ void HAL_TIM_IC_CaptureCallback(TIM_HandleTypeDef *htim) {
 		else if(sudut_alpha >= 10000){
 			sudut_alpha = 10000;
 		}
+
+		set_alpha(sudut_alpha);
+		HAL_GPIO_TogglePin(LED_PIN_GPIO_Port, LED_PIN_Pin);
 		//				counter_encoder = (int16_t) __HAL_TIM_GET_COUNTER(&htim5);
 		//				if (!__HAL_TIM_IS_TIM_COUNTING_DOWN(&htim5)){
 		//					htim
@@ -786,10 +739,10 @@ void HAL_TIM_IC_CaptureCallback(TIM_HandleTypeDef *htim) {
 }
 
 void set_alpha(int alpha) {
-	if (button_device_select_state == 1){
-		__HAL_TIM_SET_COMPARE(&htim2, TIM_CHANNEL_2, (alpha + 10000));
+	if (button_device_select_state == DEVICE_SCR){
+		__HAL_TIM_SET_COMPARE(&htim2, TIM_CHANNEL_2, (alpha + PI_ANGLE_TIM));
 		__HAL_TIM_SET_COMPARE(&htim2, TIM_CHANNEL_3, (alpha));
-		__HAL_TIM_SET_AUTORELOAD(&htim2, (alpha+10000+SCR_PULSE_WIDTH));
+		__HAL_TIM_SET_AUTORELOAD(&htim2, (alpha + 10000 + SCR_PULSE_WIDTH));
 
 		__HAL_TIM_SET_COMPARE(&htim3, TIM_CHANNEL_2, (alpha + PI_ANGLE_TIM));
 		__HAL_TIM_SET_COMPARE(&htim3, TIM_CHANNEL_3, (alpha));
@@ -800,22 +753,32 @@ void set_alpha(int alpha) {
 		__HAL_TIM_SET_AUTORELOAD(&htim4, (alpha + 10000 + SCR_PULSE_WIDTH));
 	}
 	else{
+		__HAL_TIM_SET_COMPARE(&htim2, TIM_CHANNEL_2, (alpha));
+		TIM2->CCMR2 = (TIM2->CCMR2 & ~TIM_CCMR2_OC3M) | (4 << TIM_CCMR2_OC3M_Pos);
+		__HAL_TIM_SET_AUTORELOAD(&htim2, (alpha + SCR_PULSE_WIDTH));
 
+		__HAL_TIM_SET_COMPARE(&htim3, TIM_CHANNEL_2, (alpha));
+		TIM3->CCMR2 = (TIM3->CCMR2 & ~TIM_CCMR2_OC3M) | (4 << TIM_CCMR2_OC3M_Pos);
+		__HAL_TIM_SET_AUTORELOAD(&htim3, (alpha + SCR_PULSE_WIDTH));
+
+		__HAL_TIM_SET_COMPARE(&htim4, TIM_CHANNEL_2, (alpha));
+		TIM4->CCMR2 = (TIM4->CCMR2 & ~TIM_CCMR2_OC3M) | (4 << TIM_CCMR2_OC3M_Pos);
+		__HAL_TIM_SET_AUTORELOAD(&htim4, (alpha + SCR_PULSE_WIDTH));
 	}
 }
 
 void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
 {
-	if(GPIO_Pin == DEVICE_SEL_Pin && button_device_select_state == 1) // If The INT Source Is EXTI Line9 (A9 Pin)
+	if(GPIO_Pin == DEVICE_SEL_Pin && button_device_select_state == DEVICE_TRIAC) // If The INT Source Is EXTI Line9 (A9 Pin)
 	{
-		HAL_TIM_OC_Stop_IT(&htim2, TIM_CHANNEL_3);
-
-
+		__HAL_TIM_SET_CAPTUREPOLARITY(&htim2, TIM_CHANNEL_1, TIM_ICPOLARITY_FALLING);
+		__HAL_TIM_SET_CAPTUREPOLARITY(&htim3, TIM_CHANNEL_1, TIM_ICPOLARITY_FALLING);
+		__HAL_TIM_SET_CAPTUREPOLARITY(&htim4, TIM_CHANNEL_1, TIM_ICPOLARITY_FALLING);
 		HAL_TIM_Base_Start_IT(&htim10);
-		button_device_select_state = 0;
+		button_device_select_state = DEVICE_SCR;
 	}
-	else {
-
+	else if (GPIO_Pin == DEVICE_SEL_Pin && button_device_select_state == DEVICE_SCR) {
+		button_device_select_state = DEVICE_TRIAC;
 	}
 }
 
@@ -827,12 +790,35 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 	 */
 	if(htim->Instance == TIM10){
 		if(HAL_GPIO_ReadPin(DEVICE_SEL_GPIO_Port, DEVICE_SEL_Pin) == GPIO_PIN_RESET){
-			button_device_select_state = 1;
+			button_device_select_state = DEVICE_TRIAC;
 			HAL_TIM_Base_Stop_IT(&htim10);
-
-			HAL_TIM_OC_Start_IT(&htim2, TIM_CHANNEL_3);
+			__HAL_TIM_SET_CAPTUREPOLARITY(&htim2, TIM_CHANNEL_1, TIM_ICPOLARITY_BOTHEDGE);
+			__HAL_TIM_SET_CAPTUREPOLARITY(&htim3, TIM_CHANNEL_1, TIM_ICPOLARITY_BOTHEDGE);
+			__HAL_TIM_SET_CAPTUREPOLARITY(&htim4, TIM_CHANNEL_1, TIM_ICPOLARITY_BOTHEDGE);
 		}
 	}
+
+
+	/*
+	 * Reconfigure channel 3 OC when the timers end (CNT>ARR).
+	 * Set the CCRx to the previous sudut_alpha and also set the OC mode as active on match
+	 * This must set the CCMR2 register 4-6 bits to 001b or 4U
+	 */
+	if (htim->Instance == TIM2) {
+		TIM2->CCMR2 = (TIM2->CCMR2 & ~TIM_CCMR2_OC3M) | (4 << TIM_CCMR2_OC3M_Pos);
+		TIM2->CCR3 = sudut_alpha;
+	}
+
+	if (htim->Instance == TIM3) {
+		TIM3->CCMR2 = (TIM3->CCMR2 & ~TIM_CCMR2_OC3M) | (4 << TIM_CCMR2_OC3M_Pos);
+		TIM3->CCR3 = sudut_alpha;
+	}
+
+	if (htim->Instance == TIM4) {
+		TIM4->CCMR2 = (TIM4->CCMR2 & ~TIM_CCMR2_OC3M) | (4 << TIM_CCMR2_OC3M_Pos);
+		TIM4->CCR3 = sudut_alpha;
+	}
+
 }
 
 /* USER CODE END 4 */
